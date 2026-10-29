@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Matching & Skill Development Platform</title>
+<style>
+  :root { --navy:#13245c; --blue:#2f6fed; --bg:#f4f6fb; --card:#fff; --green:#2fb36d; --text:#1c2333; --muted:#6b7487; }
+  * { box-sizing:border-box; margin:0; font-family:system-ui,Segoe UI,Arial,sans-serif; }
+  body { background:#dfe5f3; display:flex; justify-content:center; color:var(--text); }
+  #app { width:100%; max-width:430px; min-height:100vh; background:var(--bg); position:relative; padding:16px 16px 80px; }
+  h2 { margin:6px 0 12px; } h3 { margin:14px 0 8px; font-size:15px; }
+  .card { background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px; box-shadow:0 1px 4px #0001; }
+  .row { display:flex; align-items:center; gap:10px; justify-content:space-between; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .tile { background:var(--card); border-radius:12px; padding:14px 4px; text-align:center; font-size:13px; cursor:pointer; box-shadow:0 1px 4px #0001; }
+  .tile span { font-size:24px; display:block; }
+  input, textarea, select { width:100%; padding:10px; border:1px solid #cdd3e2; border-radius:10px; margin-bottom:8px; font-size:14px; }
+  textarea { min-height:160px; }
+  button { background:var(--blue); color:#fff; border:0; border-radius:10px; padding:10px 14px; cursor:pointer; font-size:14px; }
+  button.ghost { background:#e8eefc; color:var(--blue); }
+  .chips { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .chip { padding:6px 14px; border-radius:20px; background:#e8eefc; color:var(--blue); font-size:13px; cursor:pointer; }
+  .chip.on { background:var(--blue); color:#fff; }
+  .badge { background:#e3f7ec; color:var(--green); border-radius:8px; padding:3px 8px; font-size:12px; font-weight:600; }
+  .muted { color:var(--muted); font-size:13px; }
+  .bar { height:8px; background:#e6e9f2; border-radius:6px; overflow:hidden; } .bar i { display:block; height:100%; background:var(--green); }
+  nav { position:fixed; bottom:0; width:100%; max-width:430px; background:#fff; display:flex; border-top:1px solid #e1e5ef; }
+  nav div { flex:1; text-align:center; padding:10px 0; font-size:12px; color:var(--muted); cursor:pointer; }
+  nav div.on { color:var(--blue); font-weight:700; } nav span { display:block; font-size:20px; }
+  .opt { display:block; padding:8px; border:1px solid #cdd3e2; border-radius:8px; margin:6px 0; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav id="nav"></nav>
+<script>
+const $ = s => document.querySelector(s);
+let tab = 'home', jobType = 'All', cvResult = null, quizState = null;
+let profile = JSON.parse(localStorage.getItem('profile') || '{"name":"Riya","education":"","skills":"","interests":""}');
+const save = () => localStorage.setItem('profile', JSON.stringify(profile));
+const api = (url, body) => fetch(url, body ? { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) } : undefined).then(r => r.json());
+const strength = () => 25 + ['education','skills','interests'].filter(k => profile[k].trim()).length * 25;
+
+const tabs = [['home','🏠','Home'],['jobs','💼','Jobs'],['learn','📚','Learn'],['cv','📄','CV Rating'],['profile','👤','Profile']];
+function go(t) { tab = t; render(); }
+function renderNav() {
+  $('#nav').innerHTML = tabs.map(([k,i,l]) => `<div class="${tab===k?'on':''}" onclick="go('${k}')"><span>${i}</span>${l}</div>`).join('');
+}
+
+async function render() {
+  renderNav();
+  const el = $('#app');
+  if (tab === 'home') {
+    const p = strength();
+    el.innerHTML = `<h2>Hello, ${profile.name || 'there'}! 👋</h2>
+      <div class="card row"><div><b>Your Profile Strength</b><p class="muted">${p>=75?'Great! Keep it up.':'Complete your profile to improve.'}</p></div><h2 style="color:var(--green)">${p}%</h2></div>
+      <div class="grid">
+        ${[['jobs','💼','Jobs'],['learn','📚','Courses'],['cv','⭐','CV Rating'],['learn','📝','Assessments'],['profile','📋','Applications'],['profile','🏅','Certificates']]
+          .map(([t,i,l]) => `<div class="tile" onclick="go('${t}')"><span>${i}</span>${l}</div>`).join('')}
+      </div>`;
+  }
+  if (tab === 'jobs') {
+    const jobs = await api(`/api/jobs?type=${encodeURIComponent(jobType)}&skills=${encodeURIComponent(profile.skills)}`);
+    el.innerHTML = `<h2>Job Matches for You</h2>
+      <div class="chips">${['All','Full Time','Internship','Part Time'].map(t => `<div class="chip ${jobType===t?'on':''}" onclick="jobType='${t}';render()">${t}</div>`).join('')}</div>
+      ${jobs.map(j => `<div class="card"><div class="row"><div><b>${j.title}</b><p class="muted">${j.company} · ${j.location}</p><p class="muted">${j.type}</p></div>
+        <span class="badge">${j.match}% match</span></div>
+        <button style="margin-top:10px" onclick="apply(${j.id})">Apply</button></div>`).join('')}
+      ${profile.skills ? '' : '<p class="muted">Add skills in Profile to see match %.</p>'}`;
+  }
+  if (tab === 'learn') {
+    const courses = await api(`/api/courses?skills=${encodeURIComponent(profile.skills)}`);
+    el.innerHTML = `<h2>Skill Development</h2><p class="muted">Learn. Practice. Grow.</p>
+      <div class="card"><b>Skill Assessment</b><div id="quiz"></div></div>
+      <h3>Recommended Courses</h3>
+      ${courses.map(c => `<div class="card row"><div><b>${c.title}</b><p class="muted">${c.category}</p></div>${c.recommended?'<span class="badge">For you</span>':''}</div>`).join('')}`;
+    renderQuiz();
+  }
+  if (tab === 'cv') {
+    el.innerHTML = `<h2>CV Rating</h2><div class="card"><textarea id="cvtext" placeholder="Paste your CV text here..."></textarea>
+      <button onclick="rateCV()">Rate my CV</button></div><div id="cvout"></div>`;
+    if (cvResult) showCV();
+  }
+  if (tab === 'profile') {
+    const apps = await api('/api/applications');
+    el.innerHTML = `<h2>Profile</h2><div class="card">
+      <input id="p_name" placeholder="Name" value="${profile.name}">
+      <input id="p_edu" placeholder="Education" value="${profile.education}">
+      <input id="p_skills" placeholder="Skills (comma separated: python, sql, excel)" value="${profile.skills}">
+      <input id="p_int" placeholder="Interests" value="${profile.interests}">
+      <button onclick="saveProfile()">Save</button></div>
+      <h3>Application Tracking</h3>
+      ${apps.length ? apps.map(a => `<div class="card row"><div><b>${a.title}</b><p class="muted">${a.company}</p></div>
+        <select style="width:120px;margin:0" onchange="setStatus(${a.jobId},this.value)">${['Applied','Interview','Offer','Rejected'].map(s => `<option ${a.status===s?'selected':''}>${s}</option>`).join('')}</select></div>`).join('') : '<p class="muted">No applications yet.</p>'}`;
+  }
+}
+
+function saveProfile() {
+  profile = { name:$('#p_name').value, education:$('#p_edu').value, skills:$('#p_skills').value, interests:$('#p_int').value };
+  save(); alert('Profile saved'); go('home');
+}
+async function apply(id) { await api('/api/apply', { jobId:id }); alert('Applied! Track it in Profile.'); }
+async function setStatus(id, status) { await api('/api/application-status', { jobId:id, status }); }
+
+async function rateCV() {
+  const text = $('#cvtext').value;
+  if (!text.trim()) return alert('Paste your CV text first');
+  cvResult = await api('/api/cv-rate', { text });
+  showCV();
+}
+function showCV() {
+  const r = cvResult, arc = 251 * r.total / 100;
+  const color = r.total >= 80 ? '#2fb36d' : r.total >= 60 ? '#f5a623' : '#e5484d';
+  $('#cvout').innerHTML = `<div class="card" style="text-align:center">
+    <svg viewBox="0 0 200 110" width="220"><path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#e6e9f2" stroke-width="16" stroke-linecap="round"/>
+    <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="${color}" stroke-width="16" stroke-linecap="round" stroke-dasharray="${arc} 251"/></svg>
+    <h1 style="margin-top:-40px">${r.total}<small class="muted"> / 100</small></h1><b>${r.label}</b></div>
+    <div class="card"><b>Score Breakdown</b>${Object.entries(r.breakdown).map(([k,v]) =>
+      `<div style="margin-top:10px"><div class="row"><span style="text-transform:capitalize">${k}</span><span class="muted">${v}/100</span></div><div class="bar"><i style="width:${v}%"></i></div></div>`).join('')}</div>
+    <div class="card"><b>Suggestions</b><ul style="margin:8px 0 0 18px">${(r.suggestions.length?r.suggestions:['Looking good!']).map(s=>`<li class="muted">${s}</li>`).join('')}</ul></div>`;
+}
+
+async function renderQuiz() {
+  const box = $('#quiz');
+  if (!quizState) { box.innerHTML = '<p class="muted">Test your skills in 5 quick questions.</p><button onclick="startQuiz()">Start</button>'; return; }
+  const s = quizState;
+  if (s.i >= s.qs.length) {
+    const r = await api('/api/assessment', { answers:s.answers });
+    box.innerHTML = `<h3>Score: ${r.score} / ${r.total}</h3><button class="ghost" onclick="quizState=null;renderQuiz()">Retake</button>`; return;
+  }
+  const q = s.qs[s.i];
+  box.innerHTML = `<p style="margin:10px 0"><b>${s.i+1}. ${q.q}</b></p>` + q.options.map((o,k) => `<label class="opt" onclick="answer(${k})">${o}</label>`).join('');
+}
+async function startQuiz() { quizState = { qs: await api('/api/assessment'), i:0, answers:[] }; renderQuiz(); }
+function answer(k) { quizState.answers.push(k); quizState.i++; renderQuiz(); }
+
+render();
+</script>
+</body>
+</html>
